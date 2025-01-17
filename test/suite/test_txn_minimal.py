@@ -112,13 +112,11 @@ class test_txn01(wttest.WiredTigerTestCase):
     # Loop through a set of inserts, periodically committing; before each
     # commit, verify the number of visible records matches the expected value.
     def test_visibility(self):
+        key_format = "S"
+        value_format = "S"
         self.session.create(self.uri,
-            'key_format=' + self.key_format +
-            ',value_format=' + self.value_format)
-
-        # committed = 0
-        # self.check(cursor, 0, 0)
-
+            'key_format=' + key_format +
+            ',value_format=' + value_format)
 
         # Very simple transactional API usage.
 
@@ -179,28 +177,6 @@ class test_txn01(wttest.WiredTigerTestCase):
 
 
 
-
-
-        # for i in range(self.nentries):
-        #     if i > 0 and i % (self.nentries // 37) == 0:
-        #         self.check(cursor, committed, i)
-        #         self.session.commit_transaction()
-        #         committed = i
-        #         self.session.begin_transaction()
-
-        #     if self.key_format == 'S':
-        #         cursor.set_key("key: %06d" % i)
-        #     else:
-        #         cursor.set_key(i + 1)
-        #     if self.value_format == 'S':
-        #         cursor.set_value("value: %06d" % i)
-        #     else:
-        #         cursor.set_value(0xab)
-        #     cursor.insert()
-
-        # self.check(cursor, committed, self.nentries)
-        # self.session.commit_transaction()
-        # self.check(cursor, self.nentries, self.nentries)
 
 # Test that read-committed is the default isolation level.
 # class test_read_committed_default(wttest.WiredTigerTestCase):
