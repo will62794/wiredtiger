@@ -1538,6 +1538,43 @@ __txn_mod_sortable_key(WT_TXN_OP *opt)
  *     Qsort comparison routine for transaction modify list.
  */
 static int WT_CDECL
+__txn_read_set_entry_compare(const void *a, const void *b)
+{
+    WT_TXN_READ_STABLE_ENTRY *aopt, *bopt;
+
+    aopt = (WT_TXN_READ_STABLE_ENTRY *)a;
+    bopt = (WT_TXN_READ_STABLE_ENTRY *)b;
+
+    /*
+     * We want to sort on two things:
+     *  - B-tree ID
+     *  - Key
+     * However, there are a number of modification types that don't have a key to be sorted on. This
+     * requires us to add a stage between sorting on B-tree ID and key. At this intermediate stage,
+     * we sort on whether the modifications have a key.
+     *
+     * We need to uphold the contract that all modifications on the same key are contiguous in the
+     * final modification array. Technically they could be separated by non key modifications,
+     * but for simplicity's sake we sort them apart.
+     *
+     * Qsort comparators are expected to return -1 if the first argument is smaller than the second,
+     * 1 if the second argument is smaller than the first, and 0 if both arguments are equal.
+     */
+
+    /* Order by b-tree ID. */
+    if (aopt->btree->id < bopt->btree->id)
+        return (-1);
+    if (aopt->btree->id > bopt->btree->id)
+        return (1);
+
+    return memcmp(aopt->key.data, bopt->key.data, aopt->key.size < bopt->key.size ? aopt->key.size : bopt->key.size);
+}
+
+/*
+ * __txn_mod_compare --
+ *     Qsort comparison routine for transaction modify list.
+ */
+static int WT_CDECL
 __txn_mod_compare(const void *a, const void *b)
 {
     WT_TXN_OP *aopt, *bopt;
@@ -1646,7 +1683,7 @@ __wt_txn_commit(WT_SESSION_IMPL *session, const char *cfg[])
     uint32_t prepare_count;
 #endif
     u_int i;
-    bool cannot_fail, locked, prepare, readonly, update_durable_ts;
+    bool cannot_fail, locked, prepare, readonly, update_durable_ts, checked_read_set;
 
     conn = S2C(session);
     cache = conn->cache;
@@ -1658,7 +1695,7 @@ __wt_txn_commit(WT_SESSION_IMPL *session, const char *cfg[])
 #endif
     prepare = F_ISSET(txn, WT_TXN_PREPARE);
     readonly = txn->mod_count == 0;
-    cannot_fail = locked = false;
+    cannot_fail = checked_read_set = locked = false;
 
     /* Permit the commit if the transaction failed, but was read-only. */
     WT_ASSERT(session, F_ISSET(txn, WT_TXN_RUNNING));
@@ -1693,6 +1730,44 @@ __wt_txn_commit(WT_SESSION_IMPL *session, const char *cfg[])
             WT_ERR_MSG(session, EINVAL,
               "durable_timestamp should not be specified for non-prepared transaction");
     }
+
+    /**
+     * Perform validation of the read set. At this point we have all that's necessary from a TL2 perspective for transactional memory:
+     * - We have taken all the locks on the write set: this is by virtue of write conflicts
+     * - We have incremented the global counter afterwards: This is by virtue of getting the always-advancing
+     *                                                      commit timestamp to happen after having taken all the write locks.
+     */
+    if (txn->read_set_count > 0) {
+        /**
+         * Sort the entries so that we minimize cursor creation operations.
+         */
+        __wt_qsort(txn->read_set_entry, txn->read_set_count, sizeof(WT_TXN_READ_STABLE_ENTRY), __txn_read_set_entry_compare);
+
+        const char *open_cursor_cfg[] = {WT_CONFIG_BASE(session, WT_SESSION_open_cursor), NULL};
+
+        for (i = 0; i < txn->read_set_count; i++) {
+            WT_TXN_READ_STABLE_ENTRY * entry = txn->read_set_entry + i;
+
+            /* Position the cursor so that we can test the write locks on the read-stable entries */
+            if (cursor == NULL || CUR2BT(cursor)->id != entry->btree->id) {
+                if (cursor != NULL)
+                    WT_RET(cursor->close(cursor));
+                WT_RET(__wt_open_cursor(session, entry->btree->dhandle->name, NULL, open_cursor_cfg, &cursor));
+                F_SET(cursor, WT_CURSTD_RAW);
+            }
+            cursor->set_key(cursor, &entry->key);
+            WT_ERR(cursor->search(cursor));
+            WT_ERR(__wt_txn_update_check((WT_CURSOR_BTREE *)cursor));
+        }
+
+        /* Cleanup the cursor as we don't need it anymore */
+        if (cursor) {
+            WT_ERR(cursor->close(cursor));
+            cursor = NULL;
+        }
+    }
+
+    checked_read_set = true;
 
     /*
      * Release our snapshot in case it is keeping data pinned (this is particularly important for
@@ -1907,6 +1982,12 @@ __wt_txn_commit(WT_SESSION_IMPL *session, const char *cfg[])
     }
     txn->mod_count = 0;
 
+    for (i = 0; i < txn->read_set_count; i++) {
+        WT_TXN_READ_STABLE_ENTRY * entry = txn->read_set_entry + i;
+        __wt_buf_free(session, &entry->key);
+    }
+    txn->read_set_count = 0;
+
     /*
      * If durable is set, we'll try to update the global durable timestamp with that value. If
      * durable isn't set, durable is implied to be the same as commit so we'll use that instead.
@@ -1982,6 +2063,17 @@ __wt_txn_commit(WT_SESSION_IMPL *session, const char *cfg[])
     return (0);
 
 err:
+    if (!checked_read_set) {
+        if (ret == WT_NOTFOUND) {
+            __wt_session_reset_last_error(session);
+            ret = WT_ROLLBACK;
+            __wt_session_set_last_error(
+            session, ret, WT_WRITE_CONFLICT, WT_TXN_ROLLBACK_REASON_CONFLICT);
+        }
+    }
+
+    WT_ERROR_INFO previous_err = session->err_info;
+
     /*
      * Leave the commit generation in the error case.
      */
@@ -2008,6 +2100,8 @@ err:
 
     WT_TRET(__wt_session_reset_cursors(session, false));
     WT_TRET(__wt_txn_rollback(session, cfg));
+    // Restore previous error.
+    session->err_info = previous_err;
     return (ret);
 }
 
@@ -2244,6 +2338,13 @@ __wt_txn_rollback(WT_SESSION_IMPL *session, const char *cfg[])
     txn->prepare_count = 0;
 #endif
 
+    /* Free all the used buffers for the read-set to hold entry keys */
+    for (i = 0; i < txn->read_set_count; i++) {
+        WT_TXN_READ_STABLE_ENTRY * entry = txn->read_set_entry + i;
+        __wt_buf_free(session, &entry->key);
+    }
+    txn->read_set_count = 0;
+
     if (cursor != NULL) {
         /*
          * Technically the WiredTiger API allows closing a cursor to return rollback. This is a
@@ -2477,6 +2578,11 @@ __wt_txn_release_resources(WT_SESSION_IMPL *session)
     __wt_free(session, txn->mod);
     txn->mod_alloc = 0;
     txn->mod_count = 0;
+
+    WT_ASSERT(session, txn->read_set_count == 0);
+    __wt_free(session, txn->read_set_entry);
+    txn->read_set_alloc = 0;
+    txn->read_set_count = 0;
 }
 
 /*

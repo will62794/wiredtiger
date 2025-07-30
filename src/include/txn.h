@@ -265,6 +265,11 @@ struct __wt_txn_op {
     uint32_t flags;
 };
 
+struct __wt_txn_read_stable_entry {
+    WT_BTREE *btree;
+    WT_ITEM key;
+};
+
 /*
  * WT_TXN_SNAPSHOT --
  *	A structure to store the transactions snapshot details.
@@ -341,6 +346,11 @@ struct __wt_txn {
 #ifdef HAVE_DIAGNOSTIC
     u_int prepare_count;
 #endif
+
+    /* Read set entries that are part of this transaction. */
+    WT_TXN_READ_STABLE_ENTRY *read_set_entry;
+    size_t read_set_alloc;
+    u_int read_set_count;
 
     /* Scratch buffer for in-memory log records. */
     WT_ITEM *logrec;

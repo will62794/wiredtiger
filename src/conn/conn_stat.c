@@ -352,6 +352,7 @@ __statlog_dump(WT_SESSION_IMPL *session, const char *name, bool conn_stats)
         if (FLD_ISSET(conn->stat_flags, WT_STAT_JSON)) {
             /* Check if we are starting a new section. */
             endprefix = strchr(desc, ':');
+            // printf("desc: %s, endprefix: %s\n", desc, endprefix);
             prefixlen = WT_PTRDIFF(endprefix, desc);
             WT_ASSERT(session, endprefix != NULL);
             if (first || tmp->size != prefixlen || strncmp(desc, tmp->data, tmp->size) != 0) {

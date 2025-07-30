@@ -1245,6 +1245,7 @@ __wt_curhs_open(WT_SESSION_IMPL *session, WT_CURSOR *owner, WT_CURSOR **cursorp)
       __curhs_update,                                 /* update */
       __curhs_remove,                                 /* remove */
       __wt_cursor_notsup,                             /* reserve */
+      __wt_cursor_notsup,                             /* read_stable */
       __wt_cursor_config_notsup,                      /* reconfigure */
       __wt_cursor_notsup,                             /* largest_key */
       __wt_cursor_config_notsup,                      /* bound */

@@ -604,6 +604,45 @@ err:
 }
 
 /*
+ * __curfile_read_stable --
+ *     WT_CURSOR->read_stable method for the btree cursor type.
+ */
+static int
+__curfile_read_stable(WT_CURSOR *cursor)
+{
+    WT_CURSOR_BTREE *cbt;
+    WT_DECL_RET;
+    WT_SESSION_IMPL *session;
+
+    cbt = (WT_CURSOR_BTREE *)cursor;
+    CURSOR_UPDATE_API_CALL_BTREE(cursor, session, ret, read_stable);
+    WT_ERR(__cursor_copy_release(cursor));
+    WT_ERR(__cursor_checkkey(cursor));
+
+    WT_ERR(__wt_txn_context_check(session, true));
+
+    WT_ERR(__wt_btcur_read_stable(cbt));
+
+    /*
+     * Reserve maintains a position and key, which doesn't match the library API, where reserve
+     * maintains a value. Fix the API by searching after each successful reserve operation.
+     */
+    WT_ASSERT(session,
+      F_ISSET(cbt, WT_CBT_ACTIVE) && F_MASK(cursor, WT_CURSTD_KEY_SET) == WT_CURSTD_KEY_INT);
+
+err:
+    CURSOR_UPDATE_API_END_STAT(session, ret, cursor_read_stable);
+
+    /*
+     * The application might do a WT_CURSOR.get_value call when we return, so we need a value and
+     * the underlying functions didn't set one up. For various reasons, those functions may not have
+     * done a search and any previous value in the cursor might race with WT_CURSOR.reserve. For
+     * simplicity, repeat the search here.
+     */
+    return (ret == 0 ? cursor->search(cursor) : ret);
+}
+
+/*
  * __curfile_close --
  *     WT_CURSOR->close method for the btree cursor type.
  */
@@ -963,6 +1002,7 @@ __curfile_create(WT_SESSION_IMPL *session, WT_CURSOR *owner, const char *cfg[], 
       __curfile_update,                               /* update */
       __curfile_remove,                               /* remove */
       __curfile_reserve,                              /* reserve */
+      __curfile_read_stable,                          /* read_stable */
       __wti_cursor_reconfigure,                       /* reconfigure */
       __wti_cursor_largest_key,                       /* largest_key */
       __wti_cursor_bound,                             /* bound */

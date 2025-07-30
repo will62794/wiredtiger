@@ -2013,6 +2013,72 @@ err:
 }
 
 /*
+ * __wt_txn_update_check --
+ *     Check whether an update would conflict. This function expects the cursor to already be
+ *     positioned. It should be called before deciding whether to skip an update operation based on
+ *     existence of a visible update for a key --
+ *     even if there is no value visible to the transaction, an update could still conflict.
+ */
+static int
+__wt_txn_update_check(WT_CURSOR_BTREE *cbt)
+{
+    WT_BTREE *btree;
+    WT_PAGE *page;
+    WT_SESSION_IMPL *session;
+    WT_UPDATE *upd;
+
+    btree = CUR2BT(cbt);
+    page = cbt->ref->page;
+    session = CUR2S(cbt);
+    upd = NULL;
+
+    if (cbt->compare != 0)
+        return (0);
+
+    if (cbt->ins != NULL)
+        upd = cbt->ins->upd;
+    else if (btree->type == BTREE_ROW && page->modify != NULL &&
+      page->modify->mod_row_update != NULL)
+        upd = page->modify->mod_row_update[cbt->slot];
+
+    return (__wt_txn_modify_check(session, cbt, upd, NULL, WT_UPDATE_STANDARD));
+}
+
+static WT_INLINE int
+__wt_txn_add_read_stable_entry(WT_SESSION_IMPL *session, WT_CURSOR_BTREE *cbt)
+{
+    WT_TXN *txn;
+    // WT_DECL_RET;
+
+    txn = session->txn;
+    /*
+     * We're about to perform an update. Make sure we have allocated a transaction ID.
+     */
+    WT_RET(__wt_txn_id_check(session));
+    WT_ASSERT(session, F_ISSET(txn, WT_TXN_HAS_ID));
+
+    // Perform a sanity check before proceeding with the memory allocations.
+    WT_RET(cbt->iface.search(&cbt->iface));
+    WT_RET(__wt_txn_update_check(cbt));
+
+    // err:
+    // return ret;
+
+    WT_RET(__wt_realloc_def(
+      session, &txn->read_set_alloc, txn->read_set_count + 1, &txn->read_set_entry));
+
+    WT_TXN_READ_STABLE_ENTRY *entry = &txn->read_set_entry[txn->read_set_count++];
+    WT_CLEAR(*entry);
+
+    entry->btree = CUR2BT(cbt);
+    // Copy the key to the read-set so that we may check it later again before commit.
+    WT_ITEM *key = &cbt->iface.key;
+    return (__wt_buf_set(session, &entry->key, key->data, key->size));
+// err:
+    // return ret;
+}
+
+/*
  * __wt_txn_modify_check --
  *     Check if the current transaction can modify an item.
  */

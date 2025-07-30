@@ -644,6 +644,46 @@ err:
 }
 
 /*
+ * __curtable_read_stable --
+ *     WT_CURSOR->read_stable method for the table cursor type.
+ */
+static int
+__curtable_read_stable(WT_CURSOR *cursor)
+{
+    WT_CURSOR_TABLE *ctable;
+    WT_DECL_RET;
+    WT_SESSION_IMPL *session;
+
+    ctable = (WT_CURSOR_TABLE *)cursor;
+    CURSOR_UPDATE_API_CALL(cursor, session, ret, read_stable);
+
+    /*
+     * We don't have to open the indices here, but it makes the code similar to other cursor
+     * functions, and it's odd for a reserve call to succeed but the subsequent update fail opening
+     * indices.
+     *
+     * Check for a transaction before index open, opening the indices will start a transaction if
+     * one isn't running.
+     */
+    WT_ERR(__wt_txn_context_check(session, true));
+    WT_ERR(__curtable_open_indices(ctable));
+
+    /* Reserve in column groups, ignore indices. */
+    APPLY_CG(ctable, read_stable);
+
+err:
+    CURSOR_UPDATE_API_END(session, ret);
+
+    /*
+     * The application might do a WT_CURSOR.get_value call when we return, so we need a value and
+     * the underlying functions didn't set one up. For various reasons, those functions may not have
+     * done a search and any previous value in the cursor might race with WT_CURSOR.reserve. For
+     * simplicity, repeat the search here.
+     */
+    return (ret == 0 ? cursor->search(cursor) : ret);
+}
+
+/*
  * __wt_table_range_truncate --
  *     Truncate of a cursor range, table implementation.
  */
@@ -964,6 +1004,7 @@ __wt_curtable_open(WT_SESSION_IMPL *session, const char *uri, WT_CURSOR *owner, 
       __curtable_update,                             /* update */
       __curtable_remove,                             /* remove */
       __curtable_reserve,                            /* reserve */
+      __curtable_read_stable,                        /* read_stable */
       __wti_cursor_reconfigure,                      /* reconfigure */
       __curtable_largest_key,                        /* largest_key */
       __curtable_bound,                              /* bound */

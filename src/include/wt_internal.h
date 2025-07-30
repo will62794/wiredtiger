@@ -377,6 +377,8 @@ struct __wt_truncate_info;
 typedef struct __wt_truncate_info WT_TRUNCATE_INFO;
 struct __wt_txn;
 typedef struct __wt_txn WT_TXN;
+struct __wt_txn_read_stable_entry;
+typedef struct __wt_txn_read_stable_entry WT_TXN_READ_STABLE_ENTRY;
 struct __wt_txn_global;
 typedef struct __wt_txn_global WT_TXN_GLOBAL;
 struct __wt_txn_op;

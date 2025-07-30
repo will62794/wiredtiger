@@ -409,6 +409,7 @@ __wti_curdump_create(WT_CURSOR *child, WT_CURSOR *owner, WT_CURSOR **cursorp)
       __curdump_update,                             /* update */
       __curdump_remove,                             /* remove */
       __wt_cursor_notsup,                           /* reserve */
+      __wt_cursor_notsup,                           /* read_stable */
       __wt_cursor_config_notsup,                    /* reconfigure */
       __wt_cursor_notsup,                           /* largest_key */
       __curdump_bound,                              /* bound */

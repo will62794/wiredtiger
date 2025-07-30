@@ -7,6 +7,7 @@
  */
 
 #include "wt_internal.h"
+#include "txn_inline.h"
 
 /*
  * When returning an error, we need to restore the cursor to a valid state, the upper-level cursor
@@ -1904,6 +1905,22 @@ __wt_btcur_reserve(WT_CURSOR_BTREE *cbt)
     if (overwrite)
         F_SET(cursor, WT_CURSTD_OVERWRITE);
     return (ret);
+}
+
+/*
+ * __wt_btcur_read_stable --
+ *     Mark a record as read_stable in the transaction.
+ */
+int
+__wt_btcur_read_stable(WT_CURSOR_BTREE *cbt)
+{
+    WT_SESSION_IMPL *session;
+
+    session = CUR2S(cbt);
+
+    WT_STAT_CONN_DSRC_INCR(session, cursor_read_stable);
+
+    return __wt_txn_add_read_stable_entry(session, cbt);
 }
 
 /*

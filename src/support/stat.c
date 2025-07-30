@@ -220,6 +220,8 @@ static const char *const __stats_dsrc_desc[] = {
   "cursor: cursor prev calls that skip due to a globally visible history store tombstone",
   "cursor: cursor prev calls that skip greater than or equal to 100 entries",
   "cursor: cursor prev calls that skip less than 100 entries",
+  "cursor: cursor read stable",
+  "cursor: cursor read stable error",
   "cursor: cursor reconfigure calls that return an error",
   "cursor: cursor remove calls that return an error",
   "cursor: cursor reopen calls that return an error",
@@ -552,6 +554,8 @@ __wt_stat_dsrc_clear_single(WT_DSRC_STATS *stats)
     stats->cursor_prev_hs_tombstone = 0;
     stats->cursor_prev_skip_ge_100 = 0;
     stats->cursor_prev_skip_lt_100 = 0;
+    stats->cursor_read_stable = 0;
+    stats->cursor_read_stable_error = 0;
     stats->cursor_reconfigure_error = 0;
     stats->cursor_remove_error = 0;
     stats->cursor_reopen_error = 0;
@@ -875,6 +879,8 @@ __wt_stat_dsrc_aggregate_single(WT_DSRC_STATS *from, WT_DSRC_STATS *to)
     to->cursor_prev_hs_tombstone += from->cursor_prev_hs_tombstone;
     to->cursor_prev_skip_ge_100 += from->cursor_prev_skip_ge_100;
     to->cursor_prev_skip_lt_100 += from->cursor_prev_skip_lt_100;
+    to->cursor_read_stable += from->cursor_read_stable;
+    to->cursor_read_stable_error += from->cursor_read_stable_error;
     to->cursor_reconfigure_error += from->cursor_reconfigure_error;
     to->cursor_remove_error += from->cursor_remove_error;
     to->cursor_reopen_error += from->cursor_reopen_error;
@@ -1219,6 +1225,8 @@ __wt_stat_dsrc_aggregate(WT_DSRC_STATS **from, WT_DSRC_STATS *to)
     to->cursor_prev_hs_tombstone += WT_STAT_DSRC_READ(from, cursor_prev_hs_tombstone);
     to->cursor_prev_skip_ge_100 += WT_STAT_DSRC_READ(from, cursor_prev_skip_ge_100);
     to->cursor_prev_skip_lt_100 += WT_STAT_DSRC_READ(from, cursor_prev_skip_lt_100);
+    to->cursor_read_stable += WT_STAT_DSRC_READ(from, cursor_read_stable);
+    to->cursor_read_stable_error += WT_STAT_DSRC_READ(from, cursor_read_stable_error);
     to->cursor_reconfigure_error += WT_STAT_DSRC_READ(from, cursor_reconfigure_error);
     to->cursor_remove_error += WT_STAT_DSRC_READ(from, cursor_remove_error);
     to->cursor_reopen_error += WT_STAT_DSRC_READ(from, cursor_reopen_error);
@@ -1740,6 +1748,8 @@ static const char *const __stats_connection_desc[] = {
   "cursor: cursor prev calls that skip due to a globally visible history store tombstone",
   "cursor: cursor prev calls that skip greater than or equal to 100 entries",
   "cursor: cursor prev calls that skip less than 100 entries",
+  "cursor: cursor read stable",
+  "cursor: cursor read stable error",
   "cursor: cursor reconfigure calls that return an error",
   "cursor: cursor remove calls",
   "cursor: cursor remove calls that return an error",
@@ -2516,6 +2526,8 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
     stats->cursor_prev_hs_tombstone = 0;
     stats->cursor_prev_skip_ge_100 = 0;
     stats->cursor_prev_skip_lt_100 = 0;
+    stats->cursor_read_stable = 0;
+    stats->cursor_read_stable_error = 0;
     stats->cursor_reconfigure_error = 0;
     stats->cursor_remove = 0;
     stats->cursor_remove_error = 0;
@@ -3336,6 +3348,8 @@ __wt_stat_connection_aggregate(WT_CONNECTION_STATS **from, WT_CONNECTION_STATS *
     to->cursor_prev_hs_tombstone += WT_STAT_CONN_READ(from, cursor_prev_hs_tombstone);
     to->cursor_prev_skip_ge_100 += WT_STAT_CONN_READ(from, cursor_prev_skip_ge_100);
     to->cursor_prev_skip_lt_100 += WT_STAT_CONN_READ(from, cursor_prev_skip_lt_100);
+    to->cursor_read_stable += WT_STAT_CONN_READ(from, cursor_read_stable);
+    to->cursor_read_stable_error += WT_STAT_CONN_READ(from, cursor_read_stable_error);
     to->cursor_reconfigure_error += WT_STAT_CONN_READ(from, cursor_reconfigure_error);
     to->cursor_remove += WT_STAT_CONN_READ(from, cursor_remove);
     to->cursor_remove_error += WT_STAT_CONN_READ(from, cursor_remove_error);
