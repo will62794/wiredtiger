@@ -14,8 +14,9 @@ run_test() {
         echo "Running populate"
         ./wtperf -h $homedir -O ../../../bench/wtperf/runners/500m-btree-populate.wtperf
         echo "Running workload"
-        threads="((count=$num_threads,reads=4,updates=4,ops_per_txn=8))"
-        ./wtperf -h $homedir -O ../../../bench/wtperf/runners/500m-btree-80r20u.wtperf -o read_stable=$read_stable,threads=$threads
+        threads="((count=$num_threads,reads=2,updates=8,ops_per_txn=10))"
+        config="read_stable=$read_stable,threads=$threads,pareto=10"
+        ./wtperf -h $homedir -O ../../../bench/wtperf/runners/500m-btree-80r20u.wtperf -o $config
         cat $homedir/test.stat | grep -v "checkpoint operations" \
             | grep -v "backup operations" | grep -v "flush_tier operations" | grep -v "truncate operations" \
             | grep -v "scan operations"
@@ -34,7 +35,7 @@ if [ "$1" = "vizonly" ]; then
 fi
     
 # Run tests.
-for threads in 2 4 6 8 10; do
+for threads in 10; do
     run_test false $threads
     # run_test true $threads
 done

@@ -70,3 +70,5 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig(png_output_path)
     plt.close()
+
+    print(f"Goodput: {goodput:.2f} txns/sec")
