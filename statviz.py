@@ -34,12 +34,13 @@ def plot_stat(timestamps, values, stat_path):
     plt.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python plot_wt_stats.py <path_to_file> <stat.path.to.metric>")
+    if len(sys.argv) != 4:
+        print("Usage: python plot_wt_stats.py <path_to_file> <stat.path.to.metric> <png_output_path>")
         sys.exit(1)
 
     file_path = sys.argv[1]
     stat_path = sys.argv[2]
+    png_output_path = sys.argv[3]
     ts_list = []
     vals_list = []
     for path in stat_path.split(','):
@@ -56,5 +57,5 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.savefig('stats.png')
+    plt.savefig(png_output_path)
     plt.close()

@@ -149,6 +149,7 @@ DEF_OPT_AS_UINT32(read_range, 0,
 DEF_OPT_AS_BOOL(read_range_random, 0,
   "if doing range reads, select the number of keys to read "
   "in a range uniformly at random.")
+DEF_OPT_AS_BOOL(read_stable, 0, "read stable data from the database")
 DEF_OPT_AS_BOOL(readonly, 0,
   "reopen the connection between populate and workload phases in readonly mode.  Requires "
   "reopen_connection turned on (default).  Requires that read be the only workload specified")

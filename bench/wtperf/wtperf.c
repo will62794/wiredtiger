@@ -360,6 +360,8 @@ worker(void *arg)
     session = NULL;
     trk = NULL;
 
+    // printf("ops_per_txn: %" PRId64 "\n", ops_per_txn);
+
     if ((ret = conn->open_session(conn, NULL, opts->sess_config, &session)) != 0) {
         lprintf(wtperf, ret, 0, "worker: WT_CONNECTION.open_session");
         goto err;
@@ -436,6 +438,7 @@ worker(void *arg)
         lprintf(wtperf, ret, 0, "First transaction begin failed");
         goto err;
     }
+    // lprintf(wtperf, 0, 0, "use txn: %d", use_txn);
 
     while (!wtperf->stop) {
         if (workload->pause != 0)
@@ -523,6 +526,11 @@ worker(void *arg)
              * actual insert. Count failed search in a random range as a "read".
              */
             ret = cursor->search(cursor);
+
+            if(opts->read_stable){
+                cursor->read_stable(cursor);
+            }
+
             if (ret == 0) {
                 if ((ret = cursor->get_value(cursor, &value)) != 0) {
                     lprintf(wtperf, ret, 0, "get_value in read.");
@@ -567,10 +575,15 @@ worker(void *arg)
         case WORKER_MODIFY:
         case WORKER_UPDATE:
             if ((ret = cursor->search(cursor)) == 0) {
+                if(opts->read_stable){
+                    cursor->read_stable(cursor);
+                }
                 if ((ret = cursor->get_value(cursor, &value)) != 0) {
                     lprintf(wtperf, ret, 0, "get_value in update.");
                     goto err;
                 }
+                // lprintf(wtperf, ret, 0, "update");
+
                 /*
                  * Copy as much of the previous value as is safe, and be sure to NUL-terminate.
                  */
@@ -806,8 +819,16 @@ op_err:
          */
         if (use_txn || (ops_per_txn != 0 && ops++ % ops_per_txn == 0)) {
             if ((ret = session->commit_transaction(session, NULL)) != 0) {
-                lprintf(wtperf, ret, 0, "Worker transaction commit failed");
-                goto err;
+                if (ret == WT_ROLLBACK && use_txn) {
+                    // goto op_err;
+                    // lprintf(wtperf, ret, 0, "Worker transaction commit failed");
+                    // goto err;
+
+                } else{
+                    lprintf(wtperf, ret, 0, "Worker transaction commit failed");
+                    goto err;
+                }
+                
             }
             if ((ret = session->begin_transaction(session, NULL)) != 0) {
                 lprintf(wtperf, ret, 0, "Worker begin transaction failed");
@@ -2539,6 +2560,7 @@ start_run(WTPERF *wtperf)
         lprintf(wtperf, 0, 1, "Executed %" PRIu64 " checkpoint operations", wtperf->ckpt_ops);
         lprintf(wtperf, 0, 1, "Executed %" PRIu64 " flush_tier operations", wtperf->flush_ops);
 
+        // wtperf->conn->
         latency_print(wtperf);
     }
 

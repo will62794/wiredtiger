@@ -13,6 +13,7 @@ dist/clang-format
 /docs/
 test-compatibility-run/
 TCMALLOC_LIB/
+*.png
 
 # Python artifacts
 **/*.pyc
