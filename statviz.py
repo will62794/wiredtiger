@@ -16,7 +16,7 @@ def load_stats(file_path, stat_path):
                 for part in stat_path.split('.'):
                     val = val[part]
                 timestamps.append(ts)
-                values.append(val)
+                values.append((stat_path,val))
             except Exception as e:
                 print(f"Skipping line due to error: {e}")
                 continue
@@ -53,10 +53,20 @@ if __name__ == "__main__":
         
     plt.figure()
     for i, (ts, vals, path) in enumerate(zip(ts_list, vals_list, stat_path.split(','))):
-        plt.plot(ts, vals, label=path.strip())
+        plt.plot(ts, [v[1] for v in vals], label=path.strip())
 
     # Goodput from wiredTiger.transaction.transactions committed final stat number.
-    goodput = vals_list[-1][-1] / ts_list[-1][-1]
+    ts, vals = load_stats(file_path, "wiredTiger.transaction.update conflicts")
+    update_conflicts = vals[-1][1]
+
+    ts, vals = load_stats(file_path, "wiredTiger.transaction.transactions rolled back")
+    txns_rolled_back = vals[-1][1]
+
+
+    ts, vals = load_stats(file_path, "wiredTiger.transaction.transactions committed")
+    txns_committed = vals[-1][1]
+    goodput = vals[-1][1] / ts[-1]
+    # print(vals)
     plt.annotate(f'Goodput: {goodput:.2f} txns/sec', 
                 xy=(0.02, 0.68), 
                 xycoords='axes fraction',
@@ -71,4 +81,9 @@ if __name__ == "__main__":
     plt.savefig(png_output_path)
     plt.close()
 
+    # print(f"")
     print(f"Goodput: {goodput:.2f} txns/sec")
+    print(f"Update conflicts: {update_conflicts:.2f}")
+    print(f"Transactions committed: {txns_committed:.2f}")
+    print(f"Transactions rolled back: {txns_rolled_back:.2f}")
+    print(f"Conflict rate: {100 * update_conflicts/(txns_committed+txns_rolled_back):.2f}%")
