@@ -36,7 +36,7 @@ def plot_stat(timestamps, values, stat_path):
     plt.savefig('stats.png')
     plt.close()
 
-if __name__ == "__main__":
+def main():
     if len(sys.argv) != 4:
         print("Usage: python plot_wt_stats.py <path_to_file> <stat.path.to.metric> <png_output_path>")
         sys.exit(1)
@@ -82,8 +82,11 @@ if __name__ == "__main__":
     plt.close()
 
     # print(f"")
-    print(f"Goodput: {goodput:.2f} txns/sec")
+    print(f"Goodput: {goodput:,.2f} txns/sec")
     print(f"Update conflicts: {update_conflicts:.2f}")
     print(f"Transactions committed: {txns_committed:.2f}")
     print(f"Transactions rolled back: {txns_rolled_back:.2f}")
-    print(f"Conflict rate: {100 * update_conflicts/(txns_committed+txns_rolled_back):.2f}%")
+    print(f"Conflict rate: {100 * update_conflicts/(txns_committed+txns_rolled_back):.2f}%")    
+
+if __name__ == "__main__":
+    main()
