@@ -114,10 +114,10 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
         os.chdir(wtperf_dir)
         
         # Create home directory name
-        homedir = f"wt_home_read_stable_{read_stable}_{num_threads}threads"
+        homedir = f"wt_home_read_stable_{read_stable}_{num_threads}threads_rw{rw_ratio}"
         
         if not viz_only:
-            print(f"--- Running test with read_stable={read_stable} and {num_threads} threads")
+            print(f"--- Running test with read_stable={read_stable}, {num_threads} threads, rw_ratio={rw_ratio}")
             
             # Remove existing home directory if it exists
             if os.path.exists(homedir):
@@ -170,19 +170,12 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
         
         # Generate visualization using statviz.py
         stats = "wiredTiger.transaction.update conflicts,wiredTiger.transaction.transactions rolled back"
-        output_file = f"stats_read_stable_{read_stable}.png"
+        output_file = f"stats_read_stable_{read_stable}_rw{rw_ratio}.png"
         
-        # # Call statviz.py to generate the visualization
-        # subprocess.run([
-        #     sys.executable, "statviz.py", statfile, stats, output_file
-        # ], check=True)
-
         ts, vals = load_stats(statfile, "wiredTiger.transaction.transactions committed")
         txns_committed = vals[-1][1]
         print(txns_committed)
 
-        # ts, txns_rolled_back = load_stats(statfile, "wiredTiger.transaction.transactions rolled back")[-1][1]
-        # update_conflicts = load_stats(statfile, "wiredTiger.transaction.update conflicts")[-1][1]
         goodput = txns_committed / ts[-1]
         print(f"Goodput: {goodput:,.2f} txns/sec")
         
@@ -190,7 +183,8 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
             'statfile': statfile,
             'goodput': goodput,
             'output_file': output_file,
-            'homedir': homedir
+            'homedir': homedir,
+            'rw_ratio': rw_ratio
         }
         
     except subprocess.CalledProcessError as e:
@@ -210,64 +204,72 @@ def main():
                       help='Skip running tests and only generate visualizations')
     parser.add_argument('--threads', type=str, default='2,4,6,8,10,12,14',
                       help='Comma-separated list of thread counts to test')
-    parser.add_argument('--read-stable', action='store_true',
-                      help='Enable read_stable mode (default: False)')
-    parser.add_argument('--rw-ratio', type=float, default=0.5,
-                      help='Read/write ratio (default: 0.5)')
+    parser.add_argument('--read-stable', type=str, default='true,false',
+                      help='Comma-separated list of read_stable values to test')
+    parser.add_argument('--rw-ratio', type=str, default='0.5',
+                      help='Comma-separated list of read/write ratios to test')
     
     args = parser.parse_args()
     
     thread_counts = [int(t.strip()) for t in args.threads.split(',')]
+    read_stable_values = [rs.strip().lower() for rs in args.read_stable.split(',')]
+    rw_ratios = [float(r.strip()) for r in args.rw_ratio.split(',')]
     
     print(f"Running tests with thread counts: {thread_counts}")
-    print(f"Read stable: {args.read_stable}")
+    print(f"Read stable values: {read_stable_values}")
+    print(f"R/W ratios: {rw_ratios}")
     print(f"Viz only: {args.viz_only}")
     
-    results = []
-    read_stable_str = "true" if args.read_stable else "false"
-    for nthreads in thread_counts:
-        print(f"\n{'='*50}")
-        result = run_test(read_stable_str, nthreads, args.viz_only, args.rw_ratio)
-        if result:
-            results.append((nthreads, result))
-            print(f"Test completed successfully for {nthreads} threads")
-        else:
-            print(f"Test failed for {nthreads} threads")
+    all_results = {}
+    for read_stable in read_stable_values:
+        for rw_ratio in rw_ratios:
+            key = (read_stable, rw_ratio)
+            results = []
+            for nthreads in thread_counts:
+                print(f"\n{'='*50}")
+                result = run_test(read_stable, nthreads, args.viz_only, rw_ratio)
+                if result:
+                    results.append((nthreads, result))
+                    print(f"Test completed successfully for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}")
+                else:
+                    print(f"Test failed for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}")
+            all_results[key] = results
 
-    # Generate throughput vs threads plot
-    if results:
-        plt.figure()
-        thread_counts = []
-        throughputs = []
+    # Generate throughput vs threads plot with all configurations
+    if all_results:
+        plt.figure(figsize=(10, 6))
         
-        for nthreads, result in results:
-            # Load the final throughput value for each thread count
-            # ts, vals = load_stats(result['statfile'], "wiredTiger.transaction.transactions committed")
-            # throughput = vals[-1][1] / ts[-1]  # transactions / total time
-            goodput = result['goodput']
-            thread_counts.append(nthreads)
-            throughputs.append(goodput)
+        for (read_stable, rw_ratio), results in all_results.items():
+            thread_counts = []
+            throughputs = []
+            
+            for nthreads, result in results:
+                goodput = result['goodput']
+                thread_counts.append(nthreads)
+                throughputs.append(goodput)
 
-        plt.plot(thread_counts, throughputs, marker='o')
+            label = f"read_stable={read_stable}, rw_ratio={rw_ratio}"
+            plt.plot(thread_counts, throughputs, marker='o', label=label)
+
         plt.title("Throughput vs Number of Threads")
         plt.xlabel("Number of Threads")
         plt.ylabel("Throughput (txns/sec)")
         plt.grid(True)
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
         
-        # Save with a descriptive name including read_stable setting
-        read_stable_str = "true" if args.read_stable else "false"
-        plt.savefig(f'txn_scalability_read_stable_{read_stable_str}_{args.rw_ratio}.png')
+        plt.savefig('txn_scalability_comparison.png', bbox_inches='tight')
         plt.close()
     
     # Print summary
-    if results:
+    if all_results:
         print(f"\n{'='*50}")
         print("SUMMARY:")
-        print(f"{'Threads':<8} {'Status':<15} {'Output File':<30}")
-        print("-" * 50)
-        for nthreads, result in results:
-            print(f"{nthreads:<8} {'Success':<15} {result['output_file']:<30}")
+        print(f"{'Read Stable':<12} {'R/W Ratio':<10} {'Threads':<8} {'Status':<15} {'Output File':<30}")
+        print("-" * 75)
+        for (read_stable, rw_ratio), results in all_results.items():
+            for nthreads, result in results:
+                print(f"{read_stable:<12} {rw_ratio:<10.2f} {nthreads:<8} {'Success':<15} {result['output_file']:<30}")
     else:
         print("No tests completed successfully.")
 
