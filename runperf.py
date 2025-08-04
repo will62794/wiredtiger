@@ -93,7 +93,7 @@ def plot_stats(file_path, stat_path, png_output_path):
     print(f"Transactions rolled back: {txns_rolled_back:.2f}")
     print(f"Conflict rate: {100 * update_conflicts/(txns_committed+txns_rolled_back):.2f}%")    
 
-def run_test(read_stable, num_threads, viz_only=False):
+def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
     """
     Python equivalent of the run_test bash function.
     
@@ -135,9 +135,11 @@ def run_test(read_stable, num_threads, viz_only=False):
             
             # Run workload
             print("Running workload")
-            runtime_secs = 10
-            threads = f"((count={num_threads},reads=1,inserts=9,ops_per_txn=10))"
-            config = f"read_stable={read_stable},threads={threads},pareto=50,run_time={runtime_secs}"
+            runtime_secs = 20
+            ops_per_txn = 10
+            pareto = 10
+            threads = f"((count={num_threads},reads={int(rw_ratio*ops_per_txn)},inserts={int((1-rw_ratio)*ops_per_txn)},ops_per_txn={ops_per_txn}))"
+            config = f"read_stable={read_stable},threads={threads},pareto={pareto},run_time={runtime_secs}"
             
             subprocess.run([
                 "./wtperf", "-h", homedir,
@@ -210,6 +212,8 @@ def main():
                       help='Comma-separated list of thread counts to test')
     parser.add_argument('--read-stable', action='store_true',
                       help='Enable read_stable mode (default: False)')
+    parser.add_argument('--rw-ratio', type=float, default=0.5,
+                      help='Read/write ratio (default: 0.5)')
     
     args = parser.parse_args()
     
@@ -223,7 +227,7 @@ def main():
     read_stable_str = "true" if args.read_stable else "false"
     for nthreads in thread_counts:
         print(f"\n{'='*50}")
-        result = run_test(read_stable_str, nthreads, args.viz_only)
+        result = run_test(read_stable_str, nthreads, args.viz_only, args.rw_ratio)
         if result:
             results.append((nthreads, result))
             print(f"Test completed successfully for {nthreads} threads")
@@ -252,8 +256,8 @@ def main():
         plt.tight_layout()
         
         # Save with a descriptive name including read_stable setting
-        read_stable_str = "read_stable" if args.read_stable else "no_read_stable"
-        plt.savefig(f'throughput_vs_threads_{read_stable_str}.png')
+        read_stable_str = "true" if args.read_stable else "false"
+        plt.savefig(f'txn_scalability_read_stable_{read_stable_str}_{args.rw_ratio}.png')
         plt.close()
     
     # Print summary
