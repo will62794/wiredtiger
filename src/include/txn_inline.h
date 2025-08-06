@@ -2048,7 +2048,9 @@ static WT_INLINE int
 __wt_txn_add_read_stable_entry(WT_SESSION_IMPL *session, WT_CURSOR_BTREE *cbt)
 {
     WT_TXN *txn;
-    // WT_DECL_RET;
+    WT_ITEM *key;
+    WT_TXN_READ_STABLE_ENTRY *entry;
+    WT_DECL_RET;
 
     txn = session->txn;
     /*
@@ -2058,24 +2060,21 @@ __wt_txn_add_read_stable_entry(WT_SESSION_IMPL *session, WT_CURSOR_BTREE *cbt)
     WT_ASSERT(session, F_ISSET(txn, WT_TXN_HAS_ID));
 
     // Perform a sanity check before proceeding with the memory allocations.
-    WT_RET(cbt->iface.search(&cbt->iface));
-    WT_RET(__wt_txn_update_check(cbt));
-
-    // err:
-    // return ret;
+    WT_ERR(cbt->iface.search(&cbt->iface));
+    WT_ERR(__wt_txn_update_check(cbt));
 
     WT_RET(__wt_realloc_def(
       session, &txn->read_set_alloc, txn->read_set_count + 1, &txn->read_set_entry));
 
-    WT_TXN_READ_STABLE_ENTRY *entry = &txn->read_set_entry[txn->read_set_count++];
+    entry = &txn->read_set_entry[txn->read_set_count++];
     WT_CLEAR(*entry);
 
     entry->btree = CUR2BT(cbt);
     // Copy the key to the read-set so that we may check it later again before commit.
-    WT_ITEM *key = &cbt->iface.key;
+    key = &cbt->iface.key;
     return (__wt_buf_set(session, &entry->key, key->data, key->size));
-// err:
-    // return ret;
+err:
+    return ret;
 }
 
 /*
