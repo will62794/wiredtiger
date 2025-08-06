@@ -135,10 +135,11 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
             
             # Run workload
             print("Running workload")
-            runtime_secs = 20
-            ops_per_txn = 10
-            pareto = 10
-            threads = f"((count={num_threads},reads={int(rw_ratio*ops_per_txn)},inserts={int((1-rw_ratio)*ops_per_txn)},ops_per_txn={ops_per_txn}))"
+            runtime_secs = 25
+            ops_per_txn = 20
+            pareto = 5
+            # print(int(rw_ratio*ops_per_txn), round((1-rw_ratio)*ops_per_txn))
+            threads = f"((count={num_threads},reads={int(rw_ratio*ops_per_txn)},updates={int((1-rw_ratio)*ops_per_txn)},ops_per_txn={ops_per_txn}))"
             config = f"read_stable={read_stable},threads={threads},pareto={pareto},run_time={runtime_secs}"
             
             subprocess.run([
@@ -176,8 +177,23 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
         txns_committed = vals[-1][1]
         print(txns_committed)
 
+
+        # transaction begins
+        ts, vals = load_stats(statfile, "wiredTiger.transaction.transaction begins")
+        print(ts)
+        print(vals)
+        txns_begins = vals[-1][1]
+        print("txns_begins: ", txns_begins)
+        print("txns_committed: ", txns_committed)
+
+
         goodput = txns_committed / ts[-1]
         print(f"Goodput: {goodput:,.2f} txns/sec")
+
+        ts, vals = load_stats(statfile, "wiredTiger.transaction.transactions rolled back")
+        txns_rolled_back = vals[-1][1]
+        print("Transactions rolled back: ", txns_rolled_back)
+        print("Abort rate: {:.2f}%".format(100 * txns_rolled_back/(txns_committed+txns_rolled_back)))
         
         return {
             'statfile': statfile,
@@ -239,7 +255,12 @@ def main():
     if all_results:
         plt.figure(figsize=(10, 6))
         
-        for (read_stable, rw_ratio), results in all_results.items():
+        # Define colors for read_stable=true and read_stable=false
+        colors = {'true': 'blue', 'false': 'red'}
+        linestyles = ['-', '--', ':', '-.']  # Different line styles for different rw_ratios
+        # linestyles = ['-']  # Different line styles for different rw_ratios
+        
+        for i, ((read_stable, rw_ratio), results) in enumerate(all_results.items()):
             thread_counts = []
             throughputs = []
             
@@ -249,7 +270,11 @@ def main():
                 throughputs.append(goodput)
 
             label = f"read_stable={read_stable}, rw_ratio={rw_ratio}"
-            plt.plot(thread_counts, throughputs, marker='o', label=label)
+            plt.plot(thread_counts, throughputs, 
+                    color=colors[read_stable],
+                    linestyle=linestyles[i % len(linestyles)],
+                    marker='o', 
+                    label=label)
 
         plt.title("Throughput vs Number of Threads")
         plt.xlabel("Number of Threads")
