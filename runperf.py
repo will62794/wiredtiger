@@ -93,7 +93,7 @@ def plot_stats(file_path, stat_path, png_output_path):
     print(f"Transactions rolled back: {txns_rolled_back:.2f}")
     print(f"Conflict rate: {100 * update_conflicts/(txns_committed+txns_rolled_back):.2f}%")    
 
-def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
+def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_secs=20):
     """
     Python equivalent of the run_test bash function.
     
@@ -101,6 +101,8 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
         read_stable (bool): Whether to use read_stable mode
         num_threads (int): Number of threads to use
         viz_only (bool): If True, skip running tests and only generate visualizations
+        rw_ratio (float): Ratio of reads to total operations
+        runtime_secs (int): Runtime in seconds for each test
     
     Returns:
         dict: Statistics results if successful, None otherwise
@@ -135,7 +137,6 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5):
             
             # Run workload
             print("Running workload")
-            runtime_secs = 25
             ops_per_txn = 20
             pareto = 5
             # print(int(rw_ratio*ops_per_txn), round((1-rw_ratio)*ops_per_txn))
@@ -224,6 +225,8 @@ def main():
                       help='Comma-separated list of read_stable values to test')
     parser.add_argument('--rw-ratio', type=str, default='0.5',
                       help='Comma-separated list of read/write ratios to test')
+    parser.add_argument('--runtime_secs', type=int, default=20,
+                      help='Runtime in seconds for each test')
     
     args = parser.parse_args()
     
@@ -234,6 +237,7 @@ def main():
     print(f"Running tests with thread counts: {thread_counts}")
     print(f"Read stable values: {read_stable_values}")
     print(f"R/W ratios: {rw_ratios}")
+    print(f"Runtime: {args.runtime_secs} seconds")
     print(f"Viz only: {args.viz_only}")
     
     all_results = {}
@@ -243,7 +247,7 @@ def main():
             results = []
             for nthreads in thread_counts:
                 print(f"\n{'='*50}")
-                result = run_test(read_stable, nthreads, args.viz_only, rw_ratio)
+                result = run_test(read_stable, nthreads, args.viz_only, rw_ratio, args.runtime_secs)
                 if result:
                     results.append((nthreads, result))
                     print(f"Test completed successfully for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}")
