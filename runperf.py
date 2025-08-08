@@ -93,7 +93,7 @@ def plot_stats(file_path, stat_path, png_output_path):
     print(f"Transactions rolled back: {txns_rolled_back:.2f}")
     print(f"Conflict rate: {100 * update_conflicts/(txns_committed+txns_rolled_back):.2f}%")    
 
-def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_secs=20):
+def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_secs=20, pareto=10):
     """
     Python equivalent of the run_test bash function.
     
@@ -103,6 +103,7 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
         viz_only (bool): If True, skip running tests and only generate visualizations
         rw_ratio (float): Ratio of reads to total operations
         runtime_secs (int): Runtime in seconds for each test
+        pareto (int): Pareto parameter for key distribution
     
     Returns:
         dict: Statistics results if successful, None otherwise
@@ -138,7 +139,6 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
             # Run workload
             print("Running workload")
             ops_per_txn = 20
-            pareto = 5
             # print(int(rw_ratio*ops_per_txn), round((1-rw_ratio)*ops_per_txn))
             threads = f"((count={num_threads},reads={int(rw_ratio*ops_per_txn)},updates={int((1-rw_ratio)*ops_per_txn)},ops_per_txn={ops_per_txn}))"
             config = f"read_stable={read_stable},threads={threads},pareto={pareto},run_time={runtime_secs}"
@@ -184,16 +184,19 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
         print(ts)
         print(vals)
         txns_begins = vals[-1][1]
-        print("txns_begins: ", txns_begins)
-        print("txns_committed: ", txns_committed)
 
+        ts, vals = load_stats(statfile, "wiredTiger.transaction.transactions rolled back")
+        txns_rolled_back = vals[-1][1]
+
+        print("txns_begins: ", txns_begins)
+        print("txns_committed: {:,}".format(txns_committed))
+        print("txns_aborted: {:,}".format(txns_rolled_back))
 
         goodput = txns_committed / ts[-1]
         print(f"Goodput: {goodput:,.2f} txns/sec")
 
-        ts, vals = load_stats(statfile, "wiredTiger.transaction.transactions rolled back")
-        txns_rolled_back = vals[-1][1]
-        print("Transactions rolled back: ", txns_rolled_back)
+        
+        # print("Transactions rolled back: ", txns_rolled_back)
         print("Abort rate: {:.2f}%".format(100 * txns_rolled_back/(txns_committed+txns_rolled_back)))
         
         return {
@@ -227,33 +230,38 @@ def main():
                       help='Comma-separated list of read/write ratios to test')
     parser.add_argument('--runtime_secs', type=int, default=20,
                       help='Runtime in seconds for each test')
+    parser.add_argument('--pareto', type=str, default='10',
+                      help='Comma-separated list of pareto parameters for key distribution')
     
     args = parser.parse_args()
     
     thread_counts = [int(t.strip()) for t in args.threads.split(',')]
     read_stable_values = [rs.strip().lower() for rs in args.read_stable.split(',')]
     rw_ratios = [float(r.strip()) for r in args.rw_ratio.split(',')]
+    pareto_values = [int(p.strip()) for p in args.pareto.split(',')]
     
     print(f"Running tests with thread counts: {thread_counts}")
     print(f"Read stable values: {read_stable_values}")
     print(f"R/W ratios: {rw_ratios}")
     print(f"Runtime: {args.runtime_secs} seconds")
+    print(f"Pareto values: {pareto_values}")
     print(f"Viz only: {args.viz_only}")
     
     all_results = {}
     for read_stable in read_stable_values:
         for rw_ratio in rw_ratios:
-            key = (read_stable, rw_ratio)
-            results = []
-            for nthreads in thread_counts:
-                print(f"\n{'='*50}")
-                result = run_test(read_stable, nthreads, args.viz_only, rw_ratio, args.runtime_secs)
-                if result:
-                    results.append((nthreads, result))
-                    print(f"Test completed successfully for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}")
-                else:
-                    print(f"Test failed for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}")
-            all_results[key] = results
+            for pareto in pareto_values:
+                key = (read_stable, rw_ratio, pareto)
+                results = []
+                for nthreads in thread_counts:
+                    print(f"\n{'='*50}")
+                    result = run_test(read_stable, nthreads, args.viz_only, rw_ratio, args.runtime_secs, pareto)
+                    if result:
+                        results.append((nthreads, result))
+                        print(f"Test completed successfully for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}")
+                    else:
+                        print(f"Test failed for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}")
+                all_results[key] = results
 
     # Generate throughput vs threads plot with all configurations
     if all_results:
@@ -262,9 +270,9 @@ def main():
         # Define colors for read_stable=true and read_stable=false
         colors = {'true': 'blue', 'false': 'red'}
         linestyles = ['-', '--', ':', '-.']  # Different line styles for different rw_ratios
-        # linestyles = ['-']  # Different line styles for different rw_ratios
+        markers = ['o', 's', '^', 'D', 'v', '<', '>']  # Different marker styles
         
-        for i, ((read_stable, rw_ratio), results) in enumerate(all_results.items()):
+        for i, ((read_stable, rw_ratio, pareto), results) in enumerate(all_results.items()):
             thread_counts = []
             throughputs = []
             
@@ -273,11 +281,12 @@ def main():
                 thread_counts.append(nthreads)
                 throughputs.append(goodput)
 
-            label = f"read_stable={read_stable}, rw_ratio={rw_ratio}"
+            label = f"read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}"
             plt.plot(thread_counts, throughputs, 
                     color=colors[read_stable],
                     linestyle=linestyles[i % len(linestyles)],
-                    marker='o', 
+                    marker=markers[i % len(markers)],
+                    markersize=8,
                     label=label)
 
         plt.title("Throughput vs Number of Threads")
@@ -294,11 +303,11 @@ def main():
     if all_results:
         print(f"\n{'='*50}")
         print("SUMMARY:")
-        print(f"{'Read Stable':<12} {'R/W Ratio':<10} {'Threads':<8} {'Status':<15} {'Output File':<30}")
-        print("-" * 75)
-        for (read_stable, rw_ratio), results in all_results.items():
+        print(f"{'Read Stable':<12} {'R/W Ratio':<10} {'Pareto':<8} {'Threads':<8} {'Status':<15} {'Output File':<30}")
+        print("-" * 83)
+        for (read_stable, rw_ratio, pareto), results in all_results.items():
             for nthreads, result in results:
-                print(f"{read_stable:<12} {rw_ratio:<10.2f} {nthreads:<8} {'Success':<15} {result['output_file']:<30}")
+                print(f"{read_stable:<12} {rw_ratio:<10.2f} {pareto:<8} {nthreads:<8} {'Success':<15} {result['output_file']:<30}")
     else:
         print("No tests completed successfully.")
 
