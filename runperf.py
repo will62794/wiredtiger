@@ -118,16 +118,19 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
         os.chdir(wtperf_dir)
         
         # Create home directory name
-        homedir = f"wt_home_read_stable_{read_stable}_{num_threads}threads_rw{rw_ratio}"
+        homedir_root = "wtperf_data"
+        homedir = f"{homedir_root}/wt_home_read_stable_{read_stable}_{num_threads}threads_rw{rw_ratio}"
         
         if not viz_only:
             print(f"--- Running test with read_stable={read_stable}, {num_threads} threads, rw_ratio={rw_ratio}")
             
             # Remove existing home directory if it exists
-            if os.path.exists(homedir):
-                shutil.rmtree(homedir)
+            if os.path.exists(homedir_root):
+                shutil.rmtree(homedir_root)
+                # shutil.rmtree(homedir)
             
             # Create home directory
+            os.makedirs(homedir_root)
             os.makedirs(homedir)
             
             # Run populate
@@ -139,7 +142,7 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
             
             # Run workload
             print("Running workload")
-            ops_per_txn = 20
+            ops_per_txn = 40
             # print(int(rw_ratio*ops_per_txn), round((1-rw_ratio)*ops_per_txn))
             threads = f"((count={num_threads},reads={int(rw_ratio*ops_per_txn)},updates={int((1-rw_ratio)*ops_per_txn)},ops_per_txn={ops_per_txn}))"
             config = f"read_stable={read_stable},threads={threads},pareto={pareto},run_time={runtime_secs}"
@@ -218,6 +221,50 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
         # Return to original directory
         os.chdir(original_dir)
 
+def plot_all_results(all_results):
+    plt.figure(figsize=(10, 6))
+        
+    # Define colors for different rw_ratios
+    rw_ratio_colors = {
+        0.5: '#1f77b4',  # blue
+        0.8: '#2ca02c',  # green 
+        0.2: '#ff7f0e',  # orange
+        0.9: '#d62728',  # red
+        0.1: '#9467bd',  # purple
+    }
+    
+    linestyles = ['-', '--']  # Different line styles for read_stable
+    markers = ['o', 's', '^', 'D', 'v', '<', '>']  # Different marker styles
+    
+    for i, ((read_stable, rw_ratio, pareto), results) in enumerate(all_results.items()):
+        thread_counts = []
+        throughputs = []
+        
+        for nthreads, result in results:
+            goodput = result['goodput']
+            thread_counts.append(nthreads)
+            throughputs.append(goodput)
+
+        # Use a different color for each line from the default color cycle
+        linestyle = linestyles[0] if read_stable == 'true' else linestyles[1]
+
+        label = f"read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}"
+        plt.plot(thread_counts, throughputs,
+                linestyle=linestyle, 
+                marker=markers[i % len(markers)],
+                markersize=8,
+                label=label)
+
+    plt.title("Throughput vs Number of Threads")
+    plt.xlabel("Number of Threads")
+    plt.ylabel("Throughput (txns/sec)")
+    plt.grid(True)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    
+    plt.savefig('txn_scalability_comparison.png', bbox_inches='tight')
+    plt.close()
+
 def main():
     """Main function to handle command-line arguments and run tests."""
     parser = argparse.ArgumentParser(description='Run WiredTiger performance tests')
@@ -263,52 +310,11 @@ def main():
                     else:
                         print(f"Test failed for {nthreads} threads with read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}")
                 all_results[key] = results
+                sys.stdout.flush()
 
-    # Generate throughput vs threads plot with all configurations
-    if all_results:
-        plt.figure(figsize=(10, 6))
-        
-        # Define colors for different rw_ratios
-        rw_ratio_colors = {
-            0.5: '#1f77b4',  # blue
-            0.8: '#2ca02c',  # green 
-            0.2: '#ff7f0e',  # orange
-            0.9: '#d62728',  # red
-            0.1: '#9467bd',  # purple
-        }
-        
-        linestyles = ['-', '--']  # Different line styles for read_stable
-        markers = ['o', 's', '^', 'D', 'v', '<', '>']  # Different marker styles
-        
-        for i, ((read_stable, rw_ratio, pareto), results) in enumerate(all_results.items()):
-            thread_counts = []
-            throughputs = []
-            
-            for nthreads, result in results:
-                goodput = result['goodput']
-                thread_counts.append(nthreads)
-                throughputs.append(goodput)
+                # Re-plot results (throughput vs threads plot with all configurations).
+                plot_all_results(all_results)
 
-            # Use a different color for each line from the default color cycle
-            linestyle = linestyles[0] if read_stable == 'true' else linestyles[1]
-
-            label = f"read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}"
-            plt.plot(thread_counts, throughputs,
-                    linestyle=linestyle, 
-                    marker=markers[i % len(markers)],
-                    markersize=8,
-                    label=label)
-
-        plt.title("Throughput vs Number of Threads")
-        plt.xlabel("Number of Threads")
-        plt.ylabel("Throughput (txns/sec)")
-        plt.grid(True)
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.tight_layout()
-        
-        plt.savefig('txn_scalability_comparison.png', bbox_inches='tight')
-        plt.close()
-    
     # Print summary
     if all_results:
         print(f"\n{'='*50}")
