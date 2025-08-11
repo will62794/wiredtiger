@@ -13,6 +13,7 @@ import argparse
 import json
 import matplotlib.pyplot as plt
 from datetime import datetime
+import colorsys
 
 
 def load_stats(file_path, stat_path):
@@ -267,9 +268,16 @@ def main():
     if all_results:
         plt.figure(figsize=(10, 6))
         
-        # Define colors for read_stable=true and read_stable=false
-        colors = {'true': 'blue', 'false': 'red'}
-        linestyles = ['-', '--', ':', '-.']  # Different line styles for different rw_ratios
+        # Define colors for different rw_ratios
+        rw_ratio_colors = {
+            0.5: '#1f77b4',  # blue
+            0.8: '#2ca02c',  # green 
+            0.2: '#ff7f0e',  # orange
+            0.9: '#d62728',  # red
+            0.1: '#9467bd',  # purple
+        }
+        
+        linestyles = ['-', '--']  # Different line styles for read_stable
         markers = ['o', 's', '^', 'D', 'v', '<', '>']  # Different marker styles
         
         for i, ((read_stable, rw_ratio, pareto), results) in enumerate(all_results.items()):
@@ -281,10 +289,12 @@ def main():
                 thread_counts.append(nthreads)
                 throughputs.append(goodput)
 
+            # Use a different color for each line from the default color cycle
+            linestyle = linestyles[0] if read_stable == 'true' else linestyles[1]
+
             label = f"read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}"
-            plt.plot(thread_counts, throughputs, 
-                    color=colors[read_stable],
-                    linestyle=linestyles[i % len(linestyles)],
+            plt.plot(thread_counts, throughputs,
+                    linestyle=linestyle, 
                     marker=markers[i % len(markers)],
                     markersize=8,
                     label=label)
