@@ -142,15 +142,18 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
             
             # Run workload
             print("Running workload")
+
+            # Some config parameters.
             ops_per_txn = 40
-            # print(int(rw_ratio*ops_per_txn), round((1-rw_ratio)*ops_per_txn))
-            threads = f"((count={num_threads},reads={int(rw_ratio*ops_per_txn)},updates={int((1-rw_ratio)*ops_per_txn)},ops_per_txn={ops_per_txn}))"
-            config = f"read_stable={read_stable},threads={threads},pareto={pareto},run_time={runtime_secs}"
+            warmup_secs = 90
+            threads_config = f"((count={num_threads},reads={int(rw_ratio*ops_per_txn)},updates={int((1-rw_ratio)*ops_per_txn)},ops_per_txn={ops_per_txn}))"
+            
+            config_str = f"read_stable={read_stable},threads={threads_config},pareto={pareto},warmup={warmup_secs},run_time={runtime_secs}"
             
             subprocess.run([
                 "./wtperf", "-h", homedir,
                 "-O", "../../../bench/wtperf/runners/500m-btree-80r20u.wtperf",
-                "-o", config
+                "-o", config_str
             ], check=True)
             
             # Display test statistics (filtered)
@@ -185,8 +188,8 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
 
         # transaction begins
         ts, vals = load_stats(statfile, "wiredTiger.transaction.transaction begins")
-        print(ts)
-        print(vals)
+        # print(ts)
+        # print(vals)
         txns_begins = vals[-1][1]
 
         ts, vals = load_stats(statfile, "wiredTiger.transaction.transactions rolled back")
@@ -201,6 +204,7 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
 
         
         # print("Transactions rolled back: ", txns_rolled_back)
+        abort_rate = 100 * txns_rolled_back/(txns_committed+txns_rolled_back)
         print("Abort rate: {:.2f}%".format(100 * txns_rolled_back/(txns_committed+txns_rolled_back)))
         
         return {
@@ -208,7 +212,8 @@ def run_test(read_stable, num_threads, viz_only=False, rw_ratio=0.5, runtime_sec
             'goodput': goodput,
             'output_file': output_file,
             'homedir': homedir,
-            'rw_ratio': rw_ratio
+            'rw_ratio': rw_ratio,
+            'abort_rate': abort_rate
         }
         
     except subprocess.CalledProcessError as e:
@@ -239,21 +244,33 @@ def plot_all_results(all_results):
     for i, ((read_stable, rw_ratio, pareto), results) in enumerate(all_results.items()):
         thread_counts = []
         throughputs = []
+        abort_rates = []
         
         for nthreads, result in results:
             goodput = result['goodput']
+            abort_rate = result['abort_rate']
             thread_counts.append(nthreads)
             throughputs.append(goodput)
+            abort_rates.append(abort_rate)
 
         # Use a different color for each line from the default color cycle
         linestyle = linestyles[0] if read_stable == 'true' else linestyles[1]
 
         label = f"read_stable={read_stable}, rw_ratio={rw_ratio}, pareto={pareto}"
-        plt.plot(thread_counts, throughputs,
+        line = plt.plot(thread_counts, throughputs,
                 linestyle=linestyle, 
                 marker=markers[i % len(markers)],
                 markersize=8,
                 label=label)
+        
+        # Add abort rate annotations next to each point
+        for x, y, ar in zip(thread_counts, throughputs, abort_rates):
+            plt.annotate(f'{ar:.1f}%', 
+                        (x, y),
+                        xytext=(-4, 10),
+                        textcoords='offset points',
+                        fontsize=8)
+                        # bbox=dict(facecolor='white', edgecolor='none', alpha=1))
 
     plt.title("Throughput vs Number of Threads")
     plt.xlabel("Number of Threads")
